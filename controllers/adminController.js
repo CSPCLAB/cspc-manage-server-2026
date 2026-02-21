@@ -1,22 +1,85 @@
 const supabase = require('../config/supabaseClient');
 
-// 1. 전체 학회원 조회 (GET)------------------------------------
-exports.getAllAdmins = async (req, res) => {
+// 1. 학기 시간표 리셋 (POST)----------------------------------
+// Admin_Users 테이블의 모든 late_count를 0으로 초기화
+exports.resetSemester = async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('Admin_Users')
-      .select('*')
-      .order('name', { ascending: true }); // 이름순 정렬
+      .update({ late_count: 0 }) // 모든 사용자의 지각 횟수 리셋
+      .neq('id', 0); // id가 0이 아닌 모든 행
 
     if (error) throw error;
 
-    res.status(200).json({ success: true, data, message: "학회원 목록을 불러왔습니다." });
+    res.status(200).json({ success: true, data: data, message: "학기가 리셋. 모든 지각 횟수가 0이 되었습니다." });
   } catch (err) {
-    res.status(500).json({ success: false, data: null, message: "서버 오류: " + err.message });
+    res.status(500).json({ success: false, data: null, message: "리셋 실패: " + err.message });
   }
 };
 
-// 2. 학회원 추가 (POST)---------------------------------------
+// 2. 개강일 종강일 입력 (POST)----------------------------------
+// 입력받은 개강주차부터 종강주차까지 start_date, end_date를 생성
+exports.setupAcademicCalendar = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body; // 개강일, 종강일 입력
+    
+    let start = new Date(startDate);
+    let end = new Date(endDate);
+
+    // 입력된 개강일의 해당 주 일요일 찾기 (일: 0, 월: 1 ...)
+    let firstSunday = new Date(start);
+    firstSunday.setDate(start.getDate() - start.getDay()); 
+
+    let weeks = [];
+    let currentSunday = new Date(firstSunday);
+    let weekNum = 1;
+
+    // 종강일이 포함된 주의 토요일까지 반복
+    while (currentSunday <= end) {
+      let currentSaturday = new Date(currentSunday);
+      currentSaturday.setDate(currentSunday.getDate() + 6);
+
+      weeks.push({
+        week_number: weekNum++,
+        start_date: currentSunday.toISOString().split('T')[0],
+        end_date: currentSaturday.toISOString().split('T')[0]
+      });
+
+      // 다음 주 일요일로 이동
+      currentSunday.setDate(currentSunday.getDate() + 7);
+    }
+
+    const { error } = await supabase.from('Semester_Weeks').insert(weeks);
+    if (error) throw error;
+
+    res.status(201).json({ success: true, data: data[0], message: "일-토 기준 주차 생성이 완료되었습니다." });
+  } catch (err) {
+    res.status(500).json({ success: false, data: null, message: err.message });
+  }
+};
+
+// 3. 주차별 시간표 수정 (PATCH)--------------------------------
+// 특정 주차의 특정 슬롯 담당자를 변경
+exports.updateWeeklySchedule = async (req, res) => {
+  try {
+    const { weekly_id } = req.params; // 수정할 Weekly_Schedules의 ID
+    const { assigned_admin_id, is_substitute } = req.body;
+
+    const { data, error } = await supabase
+      .from('Weekly_Schedules')
+      .update({ assigned_admin_id, is_substitute })
+      .eq('id', weekly_id)
+      .select();
+
+    if (error) throw error;
+
+    res.status(200).json({ success: true, data: data[0], message: "시간표가 수정되었습니다." });
+  } catch (err) {
+    res.status(500).json({ success: false, data: null, message: "수정 실패: " + err.message });
+  }
+};
+
+// 4. 학회원 추가 (POST)---------------------------------------
 exports.createAdmin = async (req, res) => {
   try {
     const { name, color_hex } = req.body;
@@ -33,43 +96,6 @@ exports.createAdmin = async (req, res) => {
     if (error) throw error;
 
     res.status(201).json({ success: true, data: data[0], message: "학회원이 등록되었습니다." });
-  } catch (err) {
-    res.status(500).json({ success: false, data: null, message: "서버 오류: " + err.message });
-  }
-};
-
-// 3. 지각 랭킹 조회 (GET)--------------------------------------
-// late_count 기준 내림차순
-exports.getLateRanking = async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('Admin_Users')
-      .select('name, late_count, color_hex')
-      .order('late_count', { ascending: false }); // 지각 많이 한 순서대로
-
-    if (error) throw error;
-
-    res.status(200).json({ success: true, data, message: "지각 랭킹을 불러왔습니다." });
-  } catch (err) {
-    res.status(500).json({ success: false, data: null, message: "서버 오류: " + err.message });
-  }
-};
-
-// 4. 개인 출결 로그 (GET)---------------------------------------
-exports.getAdminLogs = async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    // 이 부분은 나중에 Shift_Attendance 테이블과 연결
-    const { data, error } = await supabase
-      .from('Shift_Attendance') 
-      .select('*')
-      .eq('admin_id', id)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-
-    res.status(200).json({ success: true, data, message: "개인 출결 로그를 불러왔습니다." });
   } catch (err) {
     res.status(500).json({ success: false, data: null, message: "서버 오류: " + err.message });
   }

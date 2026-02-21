@@ -4,7 +4,8 @@ const cors = require('cors');
 const agendaController = require('./controllers/agendaController');
 const suggestionController = require('./controllers/suggestionController');
 const supplyController = require('./controllers/supplyController');
-const adminController = require('./controllers/adminController');
+const userController = require('./controllers/userController');
+//const adminController = require('./controllers/adminController');
 
 const app = express();
 
@@ -28,15 +29,20 @@ app.post('/api/supplies', supplyController.createSupply);
 app.patch('/api/supplies/:id', supplyController.completeSupply);
 app.delete('/api/supplies/:id', supplyController.deleteSupply);
 
-app.get('/api/admins', adminController.getAllAdmins);          
+app.get('/api/users', userController.getAllAdmins);          
+app.get('/api/users/ranking', userController.getLateRanking); 
+app.get('/api/users/:id/logs', userController.getAdminLogs);  
+
+//[관리자 전용]
+/*
+app.post('/api/admin/schedules/init', adminController.resetSemester);      
+app.post('/api/admin/setup-weeks', adminController.setupAcademicCalendar);  
+app.patch('/api/admin/schedules/:weekly_id', adminController.updateWeeklySchedule); 
 app.post('/api/admins', adminController.createAdmin);         
-app.delete('/api/admins/:id', adminController.deleteAdmin);  
-app.get('/api/admins/ranking', adminController.getLateRanking); 
-app.get('/api/admins/:id/logs', adminController.getAdminLogs);  
+app.delete('/api/admins/:id', adminController.deleteAdmin); 
+*/
 
-// app.post('/api/users', userController.createUser);
-
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 서버가 http://localhost:${PORT} 에서 가동 중입니다!`);
+  console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
 });
