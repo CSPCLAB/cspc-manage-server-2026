@@ -29,10 +29,10 @@ app.post('/api/supplies', supplyController.createSupply);
 app.patch('/api/supplies/:id', supplyController.completeSupply);
 app.delete('/api/supplies/:id', supplyController.deleteSupply);
 
+app.get('/api/users/ranking', userController.getLateRanking); 
 app.get('/api/users', userController.getAllAdmins);    
 app.get('/api/users/:id', userController.getAdminDetail);
 app.patch('/api/users/:id', userController.updateAdminInfo);       
-app.get('/api/users/ranking', userController.getLateRanking); 
 app.get('/api/users/:id/logs', userController.getAdminLogs);  
 
 app.get('/api/lab', labController.getLabComputers); 
