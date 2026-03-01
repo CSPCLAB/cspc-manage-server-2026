@@ -3,7 +3,10 @@ const supabase = require('../config/supabaseClient');
 // 오늘 날짜 기준 주차 및 시간표 조회 (GET)-------------------------
 exports.getTodaySchedule = async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    // UTC 기준 대신 한국 시간 기준으로 오늘 날짜 추출
+    const now = new Date();
+    const krTime = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // 9시간 더하기
+    const today = krTime.toISOString().split('T')[0];
 
     //현재 날짜가 포함된 주차(week_number) 찾기
     const { data: weekData, error: weekError } = await supabase
@@ -34,8 +37,9 @@ exports.getTodaySchedule = async (req, res) => {
         Admin_Users (name, color_hex),
         Timetable_Slots (*)
       `)
-      .eq('week_number', currentWeek);
-
+      .eq('week_number', currentWeek)
+      .order('id', { ascending: true });
+    
     if (scheduleError) throw scheduleError;
 
     res.status(200).json({ 
