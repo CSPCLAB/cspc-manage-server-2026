@@ -1,32 +1,32 @@
 const supabase = require('../config/supabaseClient');
 
 // 오늘 날짜 기준 주차 및 시간표 조회 (GET)-------------------------
-exports.getTodaySchedule = async (req, res) => {
+exports.getWeeklySchedule = async (req, res) => { // 함수명 변경 제안
   try {
-    // UTC 기준 대신 한국 시간 기준으로 오늘 날짜 추출
-    const now = new Date();
-    const krTime = new Date(now.getTime() + (9 * 60 * 60 * 1000)); // 9시간 더하기
-    const today = krTime.toISOString().split('T')[0];
+    const { week } = req.params; 
+    let currentWeek;
 
-    //현재 날짜가 포함된 주차(week_number) 찾기
-    const { data: weekData, error: weekError } = await supabase
-      .from('Semester_Weeks')
-      .select('week_number')
-      .lte('start_date', today)
-      .gte('end_date', today)
-      .single();
+    if (week === 'today') {
+      //기존의 오늘 주차 찾는 로직 유지
+      const now = new Date();
+      const krTime = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+      const today = krTime.toISOString().split('T')[0];
 
-    if (weekError || !weekData) {
-      return res.status(404).json({ 
-        success: false, 
-        data: null, 
-        message: "현재 진행 중인 학기 주차 정보를 찾을 수 없습니다." 
-      });
+      const { data: weekData, error: weekError } = await supabase
+        .from('Semester_Weeks')
+        .select('week_number')
+        .lte('start_date', today)
+        .gte('end_date', today)
+        .single();
+
+      if (weekError || !weekData) throw new Error("현재 주차 정보를 찾을 수 없습니다.");
+      currentWeek = weekData.week_number;
+    } else {
+      // ✅ 숫자가 들어오면 해당 주차를 바로 사용
+      currentWeek = parseInt(week);
     }
 
-    const currentWeek = weekData.week_number;
-
-    //해당 주차의 모든 시간표 슬롯 조회 (관리자 이름 포함 Join)
+    // 데이터 조회 부분 (기존과 동일)
     const { data: scheduleData, error: scheduleError } = await supabase
       .from('Weekly_Schedules')
       .select(`
@@ -44,14 +44,11 @@ exports.getTodaySchedule = async (req, res) => {
 
     res.status(200).json({ 
       success: true, 
-      data: {
-        week_number: currentWeek,
-        schedules: scheduleData
-      }, 
+      data: { week_number: currentWeek, schedules: scheduleData }, 
       message: `${currentWeek}주차 시간표를 불러왔습니다.` 
     });
   } catch (err) {
-    res.status(500).json({ success: false, data: null, message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
