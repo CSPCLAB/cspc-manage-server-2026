@@ -43,7 +43,7 @@ app.post('/api/lab/:id/reports', labController.createRepairRequest);
 app.delete('/api/lab/reports/:id', labController.deleteRepairRequest);
 
 
-app.get('/api/schedules/today', scheduleController.getTodaySchedule);
+app.get('/api/schedules/:week', scheduleController.getTodaySchedule);
 app.patch('/api/schedules/change', scheduleController.requestSubstitute);
 app.post('/api/attendance/:weekly_id/start', scheduleController.checkIn);
 app.patch('/api/attendance/:attendance_id/end', scheduleController.checkOut);
