@@ -55,13 +55,13 @@ exports.getWeeklySchedule = async (req, res) => { // 함수명 변경 제안
 // 2. 대타 신청/변경 (PATCH)-------------------------------------
 exports.requestSubstitute = async (req, res) => {
   try {
-    const { weekly_id, new_admin_id } = req.body;
+    const { weekly_id, new_admin_id, is_substitute } = req.body;
 
     const { data, error } = await supabase
       .from('Weekly_Schedules')
       .update({ 
         assigned_admin_id: new_admin_id, 
-        is_substitute: true // 대타로 변경됨을 표시
+        is_substitute: is_substitute
       })
       .eq('id', weekly_id)
       .select();
