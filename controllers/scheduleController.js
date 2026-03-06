@@ -61,7 +61,7 @@ exports.requestSubstitute = async (req, res) => {
       .from('Weekly_Schedules')
       .update({ 
         assigned_admin_id: new_admin_id, 
-        is_substitute: is_substitute  // 추가
+        is_substitute: is_substitute
       })
       .eq('id', weekly_id)
       .select();
@@ -71,7 +71,7 @@ exports.requestSubstitute = async (req, res) => {
     res.status(200).json({ 
       success: true, 
       data: data[0], 
-      message: "대타 변경 완료 테스트123" // message: "대타 변경이 완료되었습니다." 
+      message: "대타 변경이 완료되었습니다." 
     });
   } catch (err) {
     res.status(500).json({ success: false, data: null, message: err.message });
