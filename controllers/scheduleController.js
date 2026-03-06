@@ -61,7 +61,7 @@ exports.requestSubstitute = async (req, res) => {
       .from('Weekly_Schedules')
       .update({ 
         assigned_admin_id: new_admin_id, 
-        is_substitute: is_substitute
+        is_substitute: is_substitute  // 추가
       })
       .eq('id', weekly_id)
       .select();
