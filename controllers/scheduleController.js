@@ -85,7 +85,8 @@ exports.checkIn = async (req, res) => {
     const { weekly_id } = req.params;
     const { admin_id, is_late } = req.body; // 프론트에서 판정한 지각 여부를 받음
     const now = new Date();
-    const currentTimeStr = now.toTimeString().split(' ')[0];
+    const krNow = new Date(now.getTime() + 9 * 60 * 60 * 1000); // 한국시간 변환
+    const currentTimeStr = krNow.toISOString().split("T")[1].slice(0, 8);
 
     // 해당 주차 슬롯의 시간 범위 가져오기
     const { data: slotInfo, error: slotError } = await supabase
