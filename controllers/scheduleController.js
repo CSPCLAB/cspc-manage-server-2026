@@ -82,7 +82,7 @@ exports.requestSubstitute = async (req, res) => {
 // 3. 관리 시작 (POST)--------------------------------------
 exports.checkIn = async (req, res) => {
   try {
-    const { weekly_id } = req.params;
+    const { slot_id } = req.params;
     const { admin_id, is_late } = req.body; // 프론트에서 판정한 지각 여부를 받음
     const now = new Date();
     const currentTimeStr = now.toTimeString().split(' ')[0];
@@ -94,7 +94,7 @@ exports.checkIn = async (req, res) => {
         id,
         Timetable_Slots (start_time, end_time)
       `)
-      .eq('id', weekly_id)
+      .eq('id', slot_id)
       .single();
 
     if (slotError || !slotInfo) throw new Error("시간표 정보를 찾을 수 없습니다.");
