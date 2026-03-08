@@ -100,9 +100,9 @@ exports.createRepairRequest = async (req, res) => {
 
     if (updateError) throw updateError;
 
-    res.status(201).json({ success: true, data, message: "고장 신고가 접수되었습니다." });
+    res.status(201).json({ success: true, message: "고장 신고가 접수되었습니다." });
   } catch (err) {
-    res.status(500).json({ success: false, data: null, message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
