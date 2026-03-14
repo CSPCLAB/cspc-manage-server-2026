@@ -114,8 +114,8 @@ exports.setupAcademicCalendar = async (req, res) => {
   }
 };
 
-// 1. 기본 시간표 틀 일괄 수정 (PATCH)
-exports.updateDefaultScheduleBulk = async (req, res) => {
+// 3. 기본 시간표 담당자 일괄 수정 (PATCH)----------------------
+exports.updateDefaultScheduleManager = async (req, res) => {
   try {
     const { schedules } = req.body; 
     // schedules: [{ id: 1, default_admin_id: 3 }, { id: 2, default_admin_id: 5 }, ...]
