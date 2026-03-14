@@ -51,7 +51,7 @@ app.patch('/api/attendance/:attendance_id/end', scheduleController.checkOut);
 //[관리자 전용]
 app.post('/api/admin/schedules/init', adminController.resetSemester);      
 app.post('/api/admin/setup-weeks', adminController.setupAcademicCalendar);  
-app.patch('/api/admin/schedules/:weekly_id', adminController.updateWeeklySchedule); 
+app.patch('/api/admin/schedules/:slot_id', adminController.updateDefaultSchedule); 
 app.post('/api/admins/users', adminController.createAdmin);         
 app.delete('/api/admins/users/:id', adminController.deleteAdmin); 
 
