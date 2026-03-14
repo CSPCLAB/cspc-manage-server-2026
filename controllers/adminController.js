@@ -114,28 +114,31 @@ exports.setupAcademicCalendar = async (req, res) => {
   }
 };
 
-// 3. 기본 시간표 틀 수정 (PATCH)--------------------------------
-// 원본 틀(Timetable_Slots)의 기본 담당자(default_admin_id)를 변경
-exports.updateDefaultSchedule = async (req, res) => {
+// 1. 기본 시간표 틀 일괄 수정 (PATCH)
+exports.updateDefaultScheduleBulk = async (req, res) => {
   try {
-    const { slot_id } = req.params; // 수정할 Timetable_Slots의 ID
-    const { default_admin_id } = req.body;
+    const { schedules } = req.body; 
+    // schedules: [{ id: 1, default_admin_id: 3 }, { id: 2, default_admin_id: 5 }, ...]
 
+    if (!Array.isArray(schedules)) {
+      throw new Error("데이터 형식이 올바르지 않습니다. 배열이 필요합니다.");
+    }
+
+    // 여러 행을 한 번에 업데이트하기 위해 upsert 사용
     const { data, error } = await supabase
       .from('Timetable_Slots')
-      .update({ default_admin_id }) 
-      .eq('id', slot_id)
+      .upsert(schedules, { onConflict: 'id' }) 
       .select();
 
     if (error) throw error;
 
     res.status(200).json({ 
       success: true, 
-      data: data[0], 
-      message: "기본 시간표 틀이 수정되었습니다. (새 학기 생성 시 반영됩니다.)" 
+      count: data.length,
+      message: "전체 기본 시간표 틀이 성공적으로 저장되었습니다." 
     });
   } catch (err) {
-    res.status(500).json({ success: false, data: null, message: "수정 실패: " + err.message });
+    res.status(500).json({ success: false, message: "일괄 저장 실패: " + err.message });
   }
 };
 
