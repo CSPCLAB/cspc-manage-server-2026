@@ -1,19 +1,39 @@
 const supabase = require('../config/supabaseClient');
 
 // 1. 학기 시간표 리셋 (POST)----------------------------------
-// Admin_Users 테이블의 모든 late_count를 0으로 초기화
+// 1. 학기 데이터 및 지각 횟수 전체 리셋
 exports.resetSemester = async (req, res) => {
   try {
-    const { error } = await supabase
+    // 1) 생성된 1~16주차 시간표 데이터 전체 삭제
+    const { error: scheduleError } = await supabase
+      .from('Weekly_Schedules')
+      .delete()
+      .neq('id', 0); // 모든 행 삭제
+
+    if (scheduleError) throw scheduleError;
+
+    // 2) 학기 주차 정보(날짜 등) 전체 삭제
+    const { error: weekError } = await supabase
+      .from('Semester_Weeks')
+      .delete()
+      .neq('id', 0);
+
+    if (weekError) throw weekError;
+
+    // 3) 모든 학회원의 지각 횟수 0으로 초기화
+    const { error: userError } = await supabase
       .from('Admin_Users')
-      .update({ late_count: 0 }) // 모든 사용자의 지각 횟수 리셋
-      .neq('id', 0); // id가 0이 아닌 모든 행
+      .update({ late_count: 0 })
+      .neq('id', 0);
 
-    if (error) throw error;
+    if (userError) throw userError;
 
-    res.status(200).json({ success: true, data: data, message: "학기가 리셋. 모든 지각 횟수가 0이 되었습니다." });
+    res.status(200).json({ 
+      success: true, 
+      message: "모든 시간표 데이터와 지각 횟수가 초기화되었습니다. 이제 새로운 학기를 설정할 수 있습니다." 
+    });
   } catch (err) {
-    res.status(500).json({ success: false, data: null, message: "리셋 실패: " + err.message });
+    res.status(500).json({ success: false, message: "리셋 실패: " + err.message });
   }
 };
 
