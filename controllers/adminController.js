@@ -20,7 +20,15 @@ exports.resetSemester = async (req, res) => {
 
     if (weekError) throw weekError;
 
-    // 3) 모든 학회원의 지각 횟수 0으로 초기화
+    // 3)Timetable_Slots의 기본 담당자 정보 초기화
+    const { error: templateError } = await supabase
+      .from('Timetable_Slots')
+      .update({ default_admin_id: null })
+      .neq('id', 0);
+
+    if (templateError) throw templateError;
+
+    // 4) 모든 학회원의 지각 횟수 0으로 초기화
     const { error: userError } = await supabase
       .from('Admin_Users')
       .update({ late_count: 0 })
@@ -106,22 +114,26 @@ exports.setupAcademicCalendar = async (req, res) => {
   }
 };
 
-// 3. 주차별 시간표 수정 (PATCH)--------------------------------
-// 특정 주차의 특정 슬롯 담당자를 변경
-exports.updateWeeklySchedule = async (req, res) => {
+// 3. 기본 시간표 틀 수정 (PATCH)--------------------------------
+// 원본 틀(Timetable_Slots)의 기본 담당자(default_admin_id)를 변경
+exports.updateDefaultSchedule = async (req, res) => {
   try {
-    const { weekly_id } = req.params; // 수정할 Weekly_Schedules의 ID
-    const { assigned_admin_id, is_substitute } = req.body;
+    const { slot_id } = req.params; // 수정할 Timetable_Slots의 ID
+    const { default_admin_id } = req.body;
 
     const { data, error } = await supabase
-      .from('Weekly_Schedules')
-      .update({ assigned_admin_id, is_substitute })
-      .eq('id', weekly_id)
+      .from('Timetable_Slots')
+      .update({ default_admin_id }) 
+      .eq('id', slot_id)
       .select();
 
     if (error) throw error;
 
-    res.status(200).json({ success: true, data: data[0], message: "시간표가 수정되었습니다." });
+    res.status(200).json({ 
+      success: true, 
+      data: data[0], 
+      message: "기본 시간표 틀이 수정되었습니다. (새 학기 생성 시 반영됩니다.)" 
+    });
   } catch (err) {
     res.status(500).json({ success: false, data: null, message: "수정 실패: " + err.message });
   }
