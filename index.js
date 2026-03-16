@@ -8,7 +8,7 @@ const userController = require('./controllers/userController');
 const adminController = require('./controllers/adminController');
 const labController = require('./controllers/labController');
 const scheduleController = require('./controllers/scheduleController');
-const { restrictToLabIP } = require('../middleware/auth');
+const { restrictToLabIP } = require('./middleware/auth');
 
 const app = express();
 
