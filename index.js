@@ -52,6 +52,7 @@ app.patch('/api/schedules/change', scheduleController.requestSubstitute);
 app.post('/api/attendance/:weekly_id/start', restrictToLabIP, scheduleController.checkIn);
 // 퇴근: 랩실 IP 체크 후 실행
 app.patch('/api/attendance/:attendance_id/end', restrictToLabIP, scheduleController.checkOut);
+app.get('/api/schedules/meta', scheduleController.getSemesterMeta);
 
 //[관리자 전용]
 app.post('/api/admin/schedules/init', adminController.resetSemester);      

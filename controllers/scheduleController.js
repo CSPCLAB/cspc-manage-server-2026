@@ -1,6 +1,6 @@
 const supabase = require('../config/supabaseClient');
 
-// 오늘 날짜 기준 주차 및 시간표 조회 (GET)-------------------------
+// 1. 오늘 날짜 기준 주차 및 시간표 조회 (GET)-------------------------
 exports.getWeeklySchedule = async (req, res) => { // 함수명 변경 제안
   try {
     const { week } = req.params; 
@@ -139,7 +139,7 @@ exports.checkIn = async (req, res) => {
   }
 };
 
-// 2. 관리 종료 (PATCH)-------------------------------------
+// 4. 관리 종료 (PATCH)-------------------------------------
 exports.checkOut = async (req, res) => {
   try {
     const { attendance_id } = req.params;
@@ -159,5 +159,22 @@ exports.checkOut = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, data: null, message: err.message });
+  }
+};
+
+exports.getSemesterMeta = async (req, res) => {
+  try {
+    const { count, error } = await supabase
+      .from('Semester_Weeks')
+      .select('*', { count: 'exact', head: true });
+
+    if (error) throw error;
+
+    res.status(200).json({
+      success: true,
+      totalWeeks: count || 0
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };
