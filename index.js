@@ -57,8 +57,8 @@ app.patch('/api/attendance/:attendance_id/end', restrictToLabIP, scheduleControl
 app.post('/api/admin/schedules/init', adminController.resetSemester);      
 app.post('/api/admin/setup-weeks', adminController.setupAcademicCalendar);  
 app.patch('/api/admin/schedules/manager', adminController.updateDefaultScheduleManager); 
-app.post('/api/admins/users', adminController.createAdmin);         
-app.delete('/api/admins/users/:id', adminController.deleteAdmin); 
+app.post('/api/admin/users', adminController.createAdmin);         
+app.delete('/api/admin/users/:id', adminController.deleteAdmin); 
 
 
 const PORT = process.env.PORT || 3000;
