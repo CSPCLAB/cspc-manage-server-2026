@@ -4,11 +4,20 @@ const supabase = require('../config/supabaseClient');
 // 1. 학기 데이터 및 지각 횟수 전체 리셋
 exports.resetSemester = async (req, res) => {
   try {
+    // 0) [필수 추가] 출석 기록 먼저 삭제 (참조 무결성 에러 방지)
+    // Weekly_Schedules를 참조하고 있는 자식 데이터를 가장 먼저 지워야 합니다.
+    const { error: attendanceError } = await supabase
+      .from('Shift_Attendance')
+      .delete()
+      .neq('id', 0);
+
+    if (attendanceError) throw attendanceError;
+
     // 1) 생성된 1~16주차 시간표 데이터 전체 삭제
     const { error: scheduleError } = await supabase
       .from('Weekly_Schedules')
       .delete()
-      .neq('id', 0); // 모든 행 삭제
+      .neq('id', 0);
 
     if (scheduleError) throw scheduleError;
 
@@ -20,7 +29,7 @@ exports.resetSemester = async (req, res) => {
 
     if (weekError) throw weekError;
 
-    // 3)Timetable_Slots의 기본 담당자 정보 초기화
+    // 3) Timetable_Slots의 기본 담당자 정보 초기화
     const { error: templateError } = await supabase
       .from('Timetable_Slots')
       .update({ default_admin_id: null })
@@ -38,7 +47,7 @@ exports.resetSemester = async (req, res) => {
 
     res.status(200).json({ 
       success: true, 
-      message: "모든 시간표 데이터와 지각 횟수가 초기화되었습니다. 이제 새로운 학기를 설정할 수 있습니다." 
+      message: "출석 기록을 포함한 모든 데이터가 초기화되었습니다." 
     });
   } catch (err) {
     res.status(500).json({ success: false, message: "리셋 실패: " + err.message });
