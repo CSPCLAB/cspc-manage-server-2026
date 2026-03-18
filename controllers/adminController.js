@@ -127,24 +127,29 @@ exports.setupAcademicCalendar = async (req, res) => {
 exports.updateDefaultScheduleManager = async (req, res) => {
   try {
     const { schedules } = req.body; 
-    // schedules: [{ id: 1, default_admin_id: 3 }, { id: 2, default_admin_id: 5 }, ...]
 
     if (!Array.isArray(schedules)) {
-      throw new Error("데이터 형식이 올바르지 않습니다. 배열이 필요합니다.");
+      throw new Error("배열 형식이 필요합니다.");
     }
 
-    // 여러 행을 한 번에 업데이트하기 위해 upsert 사용
-    const { data, error } = await supabase
-      .from('Timetable_Slots')
-      .upsert(schedules, { onConflict: 'id' }) 
-      .select();
+    // 모든 슬롯을 각각 업데이트하는 Promise 배열 생성 
+    const updatePromises = schedules.map(item => 
+      supabase
+        .from('Timetable_Slots')
+        .update({ default_admin_id: item.default_admin_id }) // 담당자만 수정 
+        .eq('id', item.id) // 해당 ID의 행만 타겟팅 
+    );
 
-    if (error) throw error;
+    // 병렬로 모든 업데이트 실행 
+    const results = await Promise.all(updatePromises);
+
+    // 실행 결과 중 에러가 있는지 체크
+    const errorResult = results.find(r => r.error);
+    if (errorResult) throw errorResult.error;
 
     res.status(200).json({ 
       success: true, 
-      count: data.length,
-      message: "전체 기본 시간표 틀이 성공적으로 저장되었습니다." 
+      message: "기본 관리자 설정이 모두 업데이트되었습니다." 
     });
   } catch (err) {
     res.status(500).json({ success: false, message: "일괄 저장 실패: " + err.message });
