@@ -112,7 +112,6 @@ exports.getAdminLogs = async (req, res) => {
         id,
         check_in_at,
         check_out_at,
-        status,
         Weekly_Schedules (
           week_number,
           Timetable_Slots (day_of_week, period_number)
