@@ -162,19 +162,25 @@ exports.checkOut = async (req, res) => {
   }
 };
 
+// 5. 주차 정보 (GET)-------------------------------------
 exports.getSemesterMeta = async (req, res) => {
   try {
-    const { count, error } = await supabase
+    const { data, count, error } = await supabase
       .from('Semester_Weeks')
-      .select('*', { count: 'exact', head: true });
+      .select('week_number, start_date, end_date', { count: 'exact' })
+      .order('week_number', { ascending: true });
 
     if (error) throw error;
 
     res.status(200).json({
       success: true,
-      totalWeeks: count || 0
+      totalWeeks: count || 0,
+      weeks: data || [],
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 };
