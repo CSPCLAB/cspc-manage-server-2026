@@ -106,7 +106,7 @@ exports.checkIn = async (req, res) => {
     if (currentTimeStr < start_time || currentTimeStr > end_time) {
       return res.status(403).json({
         success: false,
-        data: { server_time: now.toISOString() },
+        data: { server_time: krNow.toISOString() },
         message: `현재는 관리 시간이 아닙니다. (허용 시간: ${start_time} ~ ${end_time})`
       });
     }
@@ -117,7 +117,7 @@ exports.checkIn = async (req, res) => {
       .insert([{
         weekly_schedule_id: weekly_id,
         admin_id: admin_id,
-        check_in_at: now.toISOString(),
+        check_in_at: krNow.toISOString(),
         is_late: is_late // 프론트엔드에서 판단해서 보내준 값
       }])
       .select()
@@ -129,7 +129,7 @@ exports.checkIn = async (req, res) => {
       success: true,
       data: {
         attendance_id: attendanceData.id,
-        server_time: now.toISOString()
+        server_time: krNow.toISOString()
       },
       message: "출석 로그가 기록되었습니다."
     });
@@ -144,17 +144,18 @@ exports.checkOut = async (req, res) => {
   try {
     const { attendance_id } = req.params;
     const now = new Date();
+    const krNow = new Date(now.getTime() + 9 * 60 * 60 * 1000); // 한국시간
 
     const { error } = await supabase
       .from('Shift_Attendance')
-      .update({ check_out_at: now.toISOString() })
+      .update({ check_out_at: krNow.toISOString() })
       .eq('id', attendance_id);
 
     if (error) throw error;
 
     res.status(200).json({
       success: true,
-      data: { check_out_time: now.toISOString() },
+      data: { check_out_time: krNow.toISOString() },
       message: "퇴근 로그가 기록되었습니다."
     });
   } catch (err) {
