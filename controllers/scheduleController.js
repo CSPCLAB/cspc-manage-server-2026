@@ -77,12 +77,6 @@ function buildClassWindow(weekStartDate, dayOfWeek, startTime, endTime) {
   return { startAt, endAt };
 }
 
-function extractAttendanceRow(schedule) {
-  if (!schedule) return null;
-  const rows = Array.isArray(schedule.Shift_Attendance) ? schedule.Shift_Attendance : [];
-  return rows[0] ?? null;
-}
-
 async function getWeekStartDate(weekNumber) {
   const { data, error } = await supabase
     .from('Semester_Weeks')
@@ -104,8 +98,7 @@ async function getWeeklyScheduleWithAttendance(weeklyId) {
       id,
       week_number,
       assigned_admin_id,
-      Timetable_Slots (id, day_of_week, period_number, start_time, end_time),
-      Shift_Attendance (id, admin_id, check_in_at, check_out_at, is_late)
+      Timetable_Slots (id, day_of_week, period_number, start_time, end_time)
     `)
     .eq('id', weeklyId)
     .single();
@@ -117,8 +110,44 @@ async function getWeeklyScheduleWithAttendance(weeklyId) {
   return data;
 }
 
+async function getAttendanceRowByWeeklyId(weeklyId) {
+  const { data, error } = await supabase
+    .from('Shift_Attendance')
+    .select('id, weekly_schedule_id, admin_id, check_in_at, check_out_at, is_late')
+    .eq('weekly_schedule_id', weeklyId)
+    .order('id', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ?? null;
+}
+
+async function getAttendanceRowsByWeeklyIds(weeklyIds) {
+  if (!Array.isArray(weeklyIds) || weeklyIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await supabase
+    .from('Shift_Attendance')
+    .select('id, weekly_schedule_id, admin_id, check_in_at, check_out_at, is_late')
+    .in('weekly_schedule_id', weeklyIds)
+    .order('id', { ascending: true });
+
+  if (error) throw error;
+
+  const attendanceMap = new Map();
+  for (const row of data ?? []) {
+    if (!attendanceMap.has(row.weekly_schedule_id)) {
+      attendanceMap.set(row.weekly_schedule_id, row);
+    }
+  }
+
+  return attendanceMap;
+}
+
 async function ensureAttendanceRow(schedule) {
-  const existing = extractAttendanceRow(schedule);
+  const existing = await getAttendanceRowByWeeklyId(schedule.id);
   if (existing) return existing;
 
   if (!schedule?.assigned_admin_id) {
@@ -139,11 +168,14 @@ async function ensureAttendanceRow(schedule) {
     .select('id, admin_id, check_in_at, check_out_at, is_late')
     .single();
 
-  if (error || !data) {
-    throw new Error('출석 행을 생성하지 못했습니다.');
+  if (!error && data) {
+    return data;
   }
 
-  return data;
+  const fallback = await getAttendanceRowByWeeklyId(schedule.id);
+  if (fallback) return fallback;
+
+  throw new Error('출석 행을 생성하지 못했습니다.');
 }
 
 async function applyLatePenaltyIfNeeded(attendanceRow) {
@@ -218,17 +250,23 @@ exports.getWeeklySchedule = async (req, res) => {
         is_substitute,
         assigned_admin_id,
         Admin_Users (name, color_hex),
-        Timetable_Slots (*),
-        Shift_Attendance (id, admin_id, check_in_at, check_out_at, is_late)
+        Timetable_Slots (*)
       `)
       .eq('week_number', currentWeek)
       .order('id', { ascending: true });
 
     if (scheduleError) throw scheduleError;
 
+    const weeklyIds = (scheduleData ?? []).map((schedule) => schedule.id);
+    const attendanceMap = await getAttendanceRowsByWeeklyIds(weeklyIds);
+    const schedulesWithAttendance = (scheduleData ?? []).map((schedule) => ({
+      ...schedule,
+      Shift_Attendance: attendanceMap.has(schedule.id) ? [attendanceMap.get(schedule.id)] : [],
+    }));
+
     res.status(200).json({
       success: true,
-      data: { week_number: currentWeek, schedules: scheduleData },
+      data: { week_number: currentWeek, schedules: schedulesWithAttendance },
       message: `${currentWeek}주차 시간표를 불러왔습니다.`,
     });
   } catch (err) {
