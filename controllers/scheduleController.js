@@ -1,16 +1,201 @@
 const supabase = require('../config/supabaseClient');
 
+const DAY_TO_OFFSET = {
+  월: 0,
+  화: 1,
+  수: 2,
+  목: 3,
+  금: 4,
+  토: 5,
+  일: 6,
+};
+
+function getKSTNow() {
+  return new Date();
+}
+
+function getKSTParts(date) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+
+  return Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
+}
+
+function formatKSTTimestamp(date) {
+  const { year, month, day, hour, minute, second } = getKSTParts(date);
+  return `${year}-${month}-${day}T${hour}:${minute}:${second}+09:00`;
+}
+
+function parseKSTDateTime(dateText, timeText) {
+  if (!dateText || !timeText) return null;
+  return new Date(`${dateText}T${String(timeText).slice(0, 8)}+09:00`);
+}
+
+function addMinutes(date, minutes) {
+  return new Date(date.getTime() + minutes * 60 * 1000);
+}
+
+function addDays(date, days) {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function formatDateOnly(date) {
+  const { year, month, day } = getKSTParts(date);
+  return `${year}-${month}-${day}`;
+}
+
+function getDayOffset(dayOfWeek) {
+  const key = String(dayOfWeek || '').trim().charAt(0);
+  return DAY_TO_OFFSET[key] ?? null;
+}
+
+function buildClassWindow(weekStartDate, dayOfWeek, startTime, endTime) {
+  const offset = getDayOffset(dayOfWeek);
+  if (offset == null || !weekStartDate || !startTime || !endTime) return null;
+
+  const monday = parseKSTDateTime(weekStartDate, '00:00:00');
+  if (!monday) return null;
+
+  const classDate = addDays(monday, offset);
+  const classDateText = formatDateOnly(classDate);
+  const startAt = parseKSTDateTime(classDateText, startTime);
+  let endAt = parseKSTDateTime(classDateText, endTime);
+
+  if (!startAt) return null;
+  if (!endAt || endAt <= startAt) {
+    endAt = addMinutes(startAt, 75);
+  }
+
+  return { startAt, endAt };
+}
+
+function extractAttendanceRow(schedule) {
+  if (!schedule) return null;
+  const rows = Array.isArray(schedule.Shift_Attendance) ? schedule.Shift_Attendance : [];
+  return rows[0] ?? null;
+}
+
+async function getWeekStartDate(weekNumber) {
+  const { data, error } = await supabase
+    .from('Semester_Weeks')
+    .select('start_date')
+    .eq('week_number', weekNumber)
+    .single();
+
+  if (error || !data?.start_date) {
+    throw new Error('주차 시작 날짜를 찾을 수 없습니다.');
+  }
+
+  return data.start_date;
+}
+
+async function getWeeklyScheduleWithAttendance(weeklyId) {
+  const { data, error } = await supabase
+    .from('Weekly_Schedules')
+    .select(`
+      id,
+      week_number,
+      assigned_admin_id,
+      Timetable_Slots (id, day_of_week, period_number, start_time, end_time),
+      Shift_Attendance (id, admin_id, check_in_at, check_out_at, is_late)
+    `)
+    .eq('id', weeklyId)
+    .single();
+
+  if (error || !data) {
+    throw new Error('시간표 정보를 찾을 수 없습니다.');
+  }
+
+  return data;
+}
+
+async function ensureAttendanceRow(schedule) {
+  const existing = extractAttendanceRow(schedule);
+  if (existing) return existing;
+
+  if (!schedule?.assigned_admin_id) {
+    throw new Error('현재 담당자가 배정되지 않아 출석 행을 만들 수 없습니다.');
+  }
+
+  const { data, error } = await supabase
+    .from('Shift_Attendance')
+    .insert([
+      {
+        weekly_schedule_id: schedule.id,
+        admin_id: schedule.assigned_admin_id,
+        check_in_at: null,
+        check_out_at: null,
+        is_late: false,
+      },
+    ])
+    .select('id, admin_id, check_in_at, check_out_at, is_late')
+    .single();
+
+  if (error || !data) {
+    throw new Error('출석 행을 생성하지 못했습니다.');
+  }
+
+  return data;
+}
+
+async function applyLatePenaltyIfNeeded(attendanceRow) {
+  if (!attendanceRow || attendanceRow.is_late || !attendanceRow.admin_id) {
+    return attendanceRow;
+  }
+
+  const { data: updatedAttendance, error: attendanceError } = await supabase
+    .from('Shift_Attendance')
+    .update({ is_late: true })
+    .eq('id', attendanceRow.id)
+    .eq('is_late', false)
+    .select('id, admin_id, check_in_at, check_out_at, is_late')
+    .single();
+
+  if (attendanceError) {
+    throw attendanceError;
+  }
+
+  if (!updatedAttendance) {
+    return { ...attendanceRow, is_late: true };
+  }
+
+  const { data: adminUser, error: adminError } = await supabase
+    .from('Admin_Users')
+    .select('late_count')
+    .eq('id', updatedAttendance.admin_id)
+    .single();
+
+  if (adminError || !adminUser) {
+    throw adminError || new Error('지각 카운트를 갱신할 학회원을 찾을 수 없습니다.');
+  }
+
+  const { error: updateUserError } = await supabase
+    .from('Admin_Users')
+    .update({ late_count: (adminUser.late_count ?? 0) + 1 })
+    .eq('id', updatedAttendance.admin_id);
+
+  if (updateUserError) throw updateUserError;
+
+  return updatedAttendance;
+}
+
 // 1. 오늘 날짜 기준 주차 및 시간표 조회 (GET)-------------------------
-exports.getWeeklySchedule = async (req, res) => { // 함수명 변경 제안
+exports.getWeeklySchedule = async (req, res) => {
   try {
-    const { week } = req.params; 
+    const { week } = req.params;
     let currentWeek;
 
     if (week === 'today') {
-      //기존의 오늘 주차 찾는 로직 유지
-      const now = new Date();
-      const krTime = new Date(now.getTime() + (9 * 60 * 60 * 1000));
-      const today = krTime.toISOString().split('T')[0];
+      const now = getKSTNow();
+      const today = formatDateOnly(now);
 
       const { data: weekData, error: weekError } = await supabase
         .from('Semester_Weeks')
@@ -19,14 +204,12 @@ exports.getWeeklySchedule = async (req, res) => { // 함수명 변경 제안
         .gte('end_date', today)
         .single();
 
-      if (weekError || !weekData) throw new Error("현재 주차 정보를 찾을 수 없습니다.");
+      if (weekError || !weekData) throw new Error('현재 주차 정보를 찾을 수 없습니다.');
       currentWeek = weekData.week_number;
     } else {
-      // ✅ 숫자가 들어오면 해당 주차를 바로 사용
-      currentWeek = parseInt(week);
+      currentWeek = parseInt(week, 10);
     }
 
-    // 데이터 조회 부분 (기존과 동일)
     const { data: scheduleData, error: scheduleError } = await supabase
       .from('Weekly_Schedules')
       .select(`
@@ -35,17 +218,18 @@ exports.getWeeklySchedule = async (req, res) => { // 함수명 변경 제안
         is_substitute,
         assigned_admin_id,
         Admin_Users (name, color_hex),
-        Timetable_Slots (*)
+        Timetable_Slots (*),
+        Shift_Attendance (id, admin_id, check_in_at, check_out_at, is_late)
       `)
       .eq('week_number', currentWeek)
       .order('id', { ascending: true });
-    
+
     if (scheduleError) throw scheduleError;
 
-    res.status(200).json({ 
-      success: true, 
-      data: { week_number: currentWeek, schedules: scheduleData }, 
-      message: `${currentWeek}주차 시간표를 불러왔습니다.` 
+    res.status(200).json({
+      success: true,
+      data: { week_number: currentWeek, schedules: scheduleData },
+      message: `${currentWeek}주차 시간표를 불러왔습니다.`,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -59,71 +243,101 @@ exports.requestSubstitute = async (req, res) => {
 
     const { data, error } = await supabase
       .from('Weekly_Schedules')
-      .update({ 
-        assigned_admin_id: new_admin_id, 
-        is_substitute: is_substitute
+      .update({
+        assigned_admin_id: new_admin_id,
+        is_substitute: is_substitute,
       })
       .eq('id', weekly_id)
       .select();
 
     if (error) throw error;
 
-    res.status(200).json({ 
-      success: true, 
-      data: data[0], 
-      message: "대타 변경이 완료되었습니다." 
+    res.status(200).json({
+      success: true,
+      data: data[0],
+      message: '대타 변경이 완료되었습니다.',
     });
   } catch (err) {
     res.status(500).json({ success: false, data: null, message: err.message });
   }
 };
 
-
 // 3. 관리 시작 (POST)--------------------------------------
 exports.checkIn = async (req, res) => {
   try {
     const { weekly_id } = req.params;
-    const { admin_id, is_late } = req.body; // 프론트에서 판정한 지각 여부를 받음
-    const now = new Date();
-    const krNow = new Date(now.getTime() + 9 * 60 * 60 * 1000); // 한국시간 변환
+    const now = getKSTNow();
+    const nowKST = formatKSTTimestamp(now);
 
-    // 해당 주차 슬롯의 시간 범위 가져오기
-    const { data: slotInfo, error: slotError } = await supabase
-      .from('Weekly_Schedules')
-      .select(`
-        id,
-        Timetable_Slots (start_time, end_time)
-      `)
-      .eq('id', weekly_id)
-      .single();
+    const schedule = await getWeeklyScheduleWithAttendance(weekly_id);
 
-    if (slotError || !slotInfo) throw new Error("시간표 정보를 찾을 수 없습니다.");
+    if (!schedule.assigned_admin_id) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: '현재 담당자가 배정되지 않아 관리 시작을 기록할 수 없습니다.',
+      });
+    }
 
-    const { start_time, end_time } = slotInfo.Timetable_Slots;
+    let attendanceRow = await ensureAttendanceRow(schedule);
 
-    // Shift_Attendance에 로그 생성 (is_late는 프론트 전달값 저장)
-    const { data: attendanceData, error: authError } = await supabase
+    if (attendanceRow.check_in_at) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          attendance_id: attendanceRow.id,
+          check_in_at: attendanceRow.check_in_at,
+          check_out_at: attendanceRow.check_out_at,
+          is_late: attendanceRow.is_late,
+          server_time: nowKST,
+        },
+        message: '이미 관리 시작이 기록되어 있습니다.',
+      });
+    }
+
+    const weekStartDate = await getWeekStartDate(schedule.week_number);
+    const windowInfo = buildClassWindow(
+      weekStartDate,
+      schedule.Timetable_Slots?.day_of_week,
+      schedule.Timetable_Slots?.start_time,
+      schedule.Timetable_Slots?.end_time
+    );
+
+    if (!windowInfo) {
+      throw new Error('수업 시간 정보를 계산할 수 없습니다.');
+    }
+
+    const startLateAt = addMinutes(windowInfo.startAt, 10);
+
+    if (now > startLateAt) {
+      attendanceRow = await applyLatePenaltyIfNeeded(attendanceRow);
+    }
+
+    const { data: updatedAttendance, error: updateError } = await supabase
       .from('Shift_Attendance')
-      .insert([{
-        weekly_schedule_id: weekly_id,
-        admin_id: admin_id,
-        check_in_at: krNow.toISOString(),
-        is_late: is_late // 프론트엔드에서 판단해서 보내준 값
-      }])
-      .select()
+      .update({
+        admin_id: schedule.assigned_admin_id,
+        check_in_at: nowKST,
+      })
+      .eq('id', attendanceRow.id)
+      .select('id, admin_id, check_in_at, check_out_at, is_late')
       .single();
 
-    if (authError) throw authError;
+    if (updateError || !updatedAttendance) {
+      throw updateError || new Error('관리 시작을 기록하지 못했습니다.');
+    }
 
-    res.status(201).json({
+    res.status(200).json({
       success: true,
       data: {
-        attendance_id: attendanceData.id,
-        server_time: krNow.toISOString()
+        attendance_id: updatedAttendance.id,
+        check_in_at: updatedAttendance.check_in_at,
+        check_out_at: updatedAttendance.check_out_at,
+        is_late: updatedAttendance.is_late,
+        server_time: nowKST,
       },
-      message: "출석 로그가 기록되었습니다."
+      message: '관리 시작이 기록되었습니다.',
     });
-
   } catch (err) {
     res.status(500).json({ success: false, data: null, message: err.message });
   }
@@ -132,21 +346,74 @@ exports.checkIn = async (req, res) => {
 // 4. 관리 종료 (PATCH)-------------------------------------
 exports.checkOut = async (req, res) => {
   try {
-    const { attendance_id } = req.params;
-    const now = new Date();
-    const krNow = new Date(now.getTime() + 9 * 60 * 60 * 1000); // 한국시간
+    const { weekly_id } = req.params;
+    const now = getKSTNow();
+    const nowKST = formatKSTTimestamp(now);
 
-    const { error } = await supabase
+    const schedule = await getWeeklyScheduleWithAttendance(weekly_id);
+    let attendanceRow = await ensureAttendanceRow(schedule);
+
+    if (!attendanceRow.check_in_at) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: '관리 시작 기록이 없어 종료할 수 없습니다.',
+      });
+    }
+
+    if (attendanceRow.check_out_at) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          attendance_id: attendanceRow.id,
+          check_in_at: attendanceRow.check_in_at,
+          check_out_at: attendanceRow.check_out_at,
+          is_late: attendanceRow.is_late,
+          server_time: nowKST,
+        },
+        message: '이미 관리 종료가 기록되어 있습니다.',
+      });
+    }
+
+    const weekStartDate = await getWeekStartDate(schedule.week_number);
+    const windowInfo = buildClassWindow(
+      weekStartDate,
+      schedule.Timetable_Slots?.day_of_week,
+      schedule.Timetable_Slots?.start_time,
+      schedule.Timetable_Slots?.end_time
+    );
+
+    if (!windowInfo) {
+      throw new Error('수업 시간 정보를 계산할 수 없습니다.');
+    }
+
+    const endLateAt = addMinutes(windowInfo.endAt, 10);
+
+    if (now > endLateAt) {
+      attendanceRow = await applyLatePenaltyIfNeeded(attendanceRow);
+    }
+
+    const { data: updatedAttendance, error: updateError } = await supabase
       .from('Shift_Attendance')
-      .update({ check_out_at: krNow.toISOString() })
-      .eq('id', attendance_id);
+      .update({ check_out_at: nowKST })
+      .eq('id', attendanceRow.id)
+      .select('id, admin_id, check_in_at, check_out_at, is_late')
+      .single();
 
-    if (error) throw error;
+    if (updateError || !updatedAttendance) {
+      throw updateError || new Error('관리 종료를 기록하지 못했습니다.');
+    }
 
     res.status(200).json({
       success: true,
-      data: { check_out_time: krNow.toISOString() },
-      message: "퇴근 로그가 기록되었습니다."
+      data: {
+        attendance_id: updatedAttendance.id,
+        check_in_at: updatedAttendance.check_in_at,
+        check_out_at: updatedAttendance.check_out_at,
+        is_late: updatedAttendance.is_late,
+        server_time: nowKST,
+      },
+      message: '관리 종료가 기록되었습니다.',
     });
   } catch (err) {
     res.status(500).json({ success: false, data: null, message: err.message });
