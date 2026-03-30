@@ -86,7 +86,6 @@ exports.checkIn = async (req, res) => {
     const { admin_id, is_late } = req.body; // 프론트에서 판정한 지각 여부를 받음
     const now = new Date();
     const krNow = new Date(now.getTime() + 9 * 60 * 60 * 1000); // 한국시간 변환
-    const currentTimeStr = krNow.toISOString().split("T")[1].slice(0, 8);
 
     // 해당 주차 슬롯의 시간 범위 가져오기
     const { data: slotInfo, error: slotError } = await supabase
@@ -101,15 +100,6 @@ exports.checkIn = async (req, res) => {
     if (slotError || !slotInfo) throw new Error("시간표 정보를 찾을 수 없습니다.");
 
     const { start_time, end_time } = slotInfo.Timetable_Slots;
-
-    // 서버 시간 기준 범위 검증 (부정 출석 방지)
-    if (currentTimeStr < start_time || currentTimeStr > end_time) {
-      return res.status(403).json({
-        success: false,
-        data: { server_time: krNow.toISOString() },
-        message: `현재는 관리 시간이 아닙니다. (허용 시간: ${start_time} ~ ${end_time})`
-      });
-    }
 
     // Shift_Attendance에 로그 생성 (is_late는 프론트 전달값 저장)
     const { data: attendanceData, error: authError } = await supabase
