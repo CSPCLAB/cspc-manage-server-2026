@@ -69,11 +69,7 @@ begin
   where ts.admin_id is not null
     and now_kst >= ts.class_start - interval '1 minute'
     and now_kst <= ts.class_end + interval '10 minute'
-    and not exists (
-      select 1
-      from "Shift_Attendance" sa
-      where sa.weekly_schedule_id = ts.weekly_schedule_id
-    );
+    on conflict (weekly_schedule_id) do nothing;
 
   with today_schedules as (
     select
