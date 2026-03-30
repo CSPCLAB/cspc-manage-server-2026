@@ -48,10 +48,10 @@ app.get('/api/schedules/:week', scheduleController.getWeeklySchedule);
 app.patch('/api/schedules/change', scheduleController.requestSubstitute);
 //app.post('/api/attendance/:weekly_id/start', scheduleController.checkIn);
 //app.patch('/api/attendance/:weekly_id/end', scheduleController.checkOut);
-// 출근: 랩실 IP 체크 후 실행
-app.post('/api/attendance/:weekly_id/start', restrictToLabIP, scheduleController.checkIn);
-// 퇴근: 랩실 IP 체크 후 실행
-app.patch('/api/attendance/:weekly_id/end', restrictToLabIP, scheduleController.checkOut);
+// 출근: 테스트를 위해 IP 체크 잠시 비활성화
+app.post('/api/attendance/:weekly_id/start', scheduleController.checkIn);
+// 퇴근: 테스트를 위해 IP 체크 잠시 비활성화
+app.patch('/api/attendance/:weekly_id/end', scheduleController.checkOut);
 
 //[관리자 전용]
 app.post('/api/admin/schedules/init', adminController.resetSemester);      
