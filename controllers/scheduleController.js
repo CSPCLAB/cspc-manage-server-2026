@@ -77,18 +77,23 @@ function buildClassWindow(weekStartDate, dayOfWeek, startTime, endTime) {
   return { startAt, endAt };
 }
 
-async function getWeekStartDate(weekNumber) {
+async function getWeekMeta(weekNumber) {
   const { data, error } = await supabase
     .from('Semester_Weeks')
-    .select('start_date')
+    .select('week_number, start_date, end_date')
     .eq('week_number', weekNumber)
     .single();
 
-  if (error || !data?.start_date) {
-    throw new Error('주차 시작 날짜를 찾을 수 없습니다.');
+  if (error || !data?.start_date || !data?.end_date) {
+    throw new Error('주차 날짜 정보를 찾을 수 없습니다.');
   }
 
-  return data.start_date;
+  return data;
+}
+
+async function getWeekStartDate(weekNumber) {
+  const weekMeta = await getWeekMeta(weekNumber);
+  return weekMeta.start_date;
 }
 
 async function getWeeklyScheduleWithAttendance(weeklyId) {
@@ -224,6 +229,7 @@ exports.getWeeklySchedule = async (req, res) => {
   try {
     const { week } = req.params;
     let currentWeek;
+    let weekMeta;
 
     if (week === 'today') {
       const now = getKSTNow();
@@ -231,15 +237,17 @@ exports.getWeeklySchedule = async (req, res) => {
 
       const { data: weekData, error: weekError } = await supabase
         .from('Semester_Weeks')
-        .select('week_number')
+        .select('week_number, start_date, end_date')
         .lte('start_date', today)
         .gte('end_date', today)
         .single();
 
       if (weekError || !weekData) throw new Error('현재 주차 정보를 찾을 수 없습니다.');
       currentWeek = weekData.week_number;
+      weekMeta = weekData;
     } else {
       currentWeek = parseInt(week, 10);
+      weekMeta = await getWeekMeta(currentWeek);
     }
 
     const { data: scheduleData, error: scheduleError } = await supabase
@@ -266,7 +274,12 @@ exports.getWeeklySchedule = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: { week_number: currentWeek, schedules: schedulesWithAttendance },
+      data: {
+        week_number: currentWeek,
+        start_date: weekMeta.start_date,
+        end_date: weekMeta.end_date,
+        schedules: schedulesWithAttendance,
+      },
       message: `${currentWeek}주차 시간표를 불러왔습니다.`,
     });
   } catch (err) {
